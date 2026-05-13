@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tienda Médica — Uniformes Médicos</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<!-- ✅ SUPABASE SDK (sin bundler, directo desde CDN) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root {
+    --navy: #0a1628; --blue: #1a4a8a; --sky: #2d7dd2;
+    --ice: #e8f4ff; --accent: #00c2ff; --white: #f8fbff;
+    --text: #1a2a3a; --muted: #5a7a9a; --red: #e53e3e;
+    --green: #25D366;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'DM Sans',sans-serif; background:var(--white); color:var(--text); overflow-x:hidden; }
+
+  nav {
+    position:fixed; top:0; width:100%; z-index:100;
+    background:rgba(10,22,40,0.97); backdrop-filter:blur(12px);
+    padding:0 5%; display:flex; align-items:center; justify-content:space-between;
+    height:64px; border-bottom:1px solid rgba(0,194,255,0.15);
+  }
+  .logo { font-family:'DM Serif Display',serif; font-size:1.4rem; color:var(--white); }
+  .logo span { color:var(--accent); }
+  .nav-right { display:flex; align-items:center; gap:10px; }
+  .cart-btn { background:var(--accent); color:var(--navy); border:none; padding:8px 18px; border-radius:50px; font-weight:700; font-size:0.85rem; cursor:pointer; }
+  .admin-btn { background:transparent; color:rgba(248,251,255,0.55); border:1px solid rgba(248,251,255,0.2); padding:7px 14px; border-radius:50px; font-size:0.78rem; cursor:pointer; transition:all 0.2s; }
+  .admin-btn:hover { color:var(--accent); border-color:var(--accent); }
+
+  /* SYNC INDICATOR */
+  .sync-dot { width:8px; height:8px; border-radius:50%; background:#888; display:inline-block; margin-right:6px; transition:background 0.3s; }
+  .sync-dot.live  { background:#25D366; box-shadow:0 0 0 3px rgba(37,211,102,0.2); animation: pulse-green 2s infinite; }
+  .sync-dot.error { background:var(--red); }
+  @keyframes pulse-green { 0%,100%{box-shadow:0 0 0 3px rgba(37,211,102,0.2)} 50%{box-shadow:0 0 0 6px rgba(37,211,102,0.1)} }
+
+  .hero { min-height:80vh; background:var(--navy); display:flex; align-items:center; padding:90px 5% 60px; position:relative; overflow:hidden; }
+  .hero::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse 80% 60% at 70% 50%, rgba(45,125,210,0.2) 0%, transparent 70%); }
+  .hero-grid { position:absolute; inset:0; opacity:0.04; background-image:linear-gradient(rgba(0,194,255,1) 1px,transparent 1px),linear-gradient(90deg,rgba(0,194,255,1) 1px,transparent 1px); background-size:50px 50px; }
+  .hero-content { position:relative; z-index:1; max-width:540px; }
+  .hero-badge { display:inline-flex; align-items:center; background:rgba(0,194,255,0.12); border:1px solid rgba(0,194,255,0.3); color:var(--accent); padding:6px 16px; border-radius:50px; font-size:0.78rem; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:24px; }
+  .hero h1 { font-family:'DM Serif Display',serif; font-size:clamp(2.4rem,6vw,3.8rem); color:var(--white); line-height:1.1; margin-bottom:18px; }
+  .hero h1 em { color:var(--accent); font-style:italic; }
+  .hero p { color:rgba(248,251,255,0.6); font-size:1rem; line-height:1.7; margin-bottom:32px; }
+  .btn-primary { background:var(--accent); color:var(--navy); border:none; padding:14px 32px; border-radius:50px; font-weight:700; font-size:0.95rem; cursor:pointer; display:inline-block; text-decoration:none; }
+
+  .section { padding:60px 5%; }
+  .section-label { font-size:0.78rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--sky); margin-bottom:10px; }
+  .section-title { font-family:'DM Serif Display',serif; font-size:clamp(1.8rem,4vw,2.6rem); color:var(--navy); margin-bottom:32px; }
+  .products-bg { background:var(--ice); }
+
+  .products-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:20px; }
+  .product-card { background:white; border-radius:18px; overflow:hidden; border:1px solid rgba(45,125,210,0.1); transition:all 0.3s; }
+  .product-card:hover { transform:translateY(-4px); box-shadow:0 14px 36px rgba(26,74,138,0.13); }
+  .product-img { height:200px; background:linear-gradient(135deg,var(--ice),rgba(45,125,210,0.12)); display:flex; align-items:center; justify-content:center; font-size:5rem; position:relative; overflow:hidden; }
+  .product-img img { width:100%; height:100%; object-fit:cover; }
+  .product-badge { position:absolute; top:10px; left:10px; background:var(--accent); color:var(--navy); font-size:0.68rem; font-weight:700; padding:3px 10px; border-radius:50px; text-transform:uppercase; }
+  .product-info { padding:16px; }
+  .product-category { font-size:0.7rem; font-weight:600; color:var(--sky); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:5px; }
+  .product-name { font-weight:600; font-size:0.98rem; color:var(--navy); margin-bottom:6px; line-height:1.3; }
+  .product-desc { font-size:0.8rem; color:var(--muted); line-height:1.5; margin-bottom:12px; }
+  .product-footer { display:flex; align-items:center; justify-content:space-between; }
+  .product-price { font-family:'DM Serif Display',serif; font-size:1.25rem; color:var(--navy); }
+  .product-price small, .product-price .piece { font-family:'DM Sans',sans-serif; font-size:0.72rem; color:var(--muted); font-weight:400; display:block; }
+  .add-btn { background:var(--blue); color:white; border:none; width:36px; height:36px; border-radius:50%; font-size:1.2rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; flex-shrink:0; }
+  .add-btn:hover { background:var(--sky); transform:scale(1.1); }
+
+  /* SKELETON LOADER */
+  .skeleton { border-radius:18px; overflow:hidden; border:1px solid rgba(45,125,210,0.1); background:white; }
+  .skel-img { height:200px; background:linear-gradient(90deg,#e8f4ff 25%,#d4eaff 50%,#e8f4ff 75%); background-size:200% 100%; animation:shimmer 1.5s infinite; }
+  .skel-body { padding:16px; }
+  .skel-line { height:12px; border-radius:6px; background:linear-gradient(90deg,#e8f4ff 25%,#d4eaff 50%,#e8f4ff 75%); background-size:200% 100%; animation:shimmer 1.5s infinite; margin-bottom:10px; }
+  .skel-line.w60 { width:60%; }
+  .skel-line.w80 { width:80%; }
+  .skel-line.w40 { width:40%; }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  .empty-state { grid-column:1/-1; text-align:center; padding:60px 20px; color:var(--muted); }
+  .empty-state .ei { font-size:3.5rem; margin-bottom:16px; }
+
+  .features { background:var(--navy); padding:70px 5%; }
+  .features .section-title { color:var(--white); }
+  .features-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:24px; margin-top:36px; }
+  .feature { padding:24px; border-radius:16px; border:1px solid rgba(0,194,255,0.15); background:rgba(255,255,255,0.03); }
+  .feature-icon { font-size:1.8rem; margin-bottom:14px; }
+  .feature-title { font-weight:600; color:var(--white); margin-bottom:6px; font-size:0.95rem; }
+  .feature-desc { font-size:0.82rem; color:rgba(248,251,255,0.5); line-height:1.6; }
+
+  footer { background:var(--navy); padding:36px 5%; border-top:1px solid rgba(0,194,255,0.1); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; }
+  .footer-logo { font-family:'DM Serif Display',serif; font-size:1.2rem; color:var(--white); }
+  .footer-logo span { color:var(--accent); }
+  footer p { color:rgba(248,251,255,0.4); font-size:0.82rem; }
+
+  .toast { position:fixed; bottom:24px; right:24px; z-index:9999; background:var(--navy); color:white; padding:12px 20px; border-radius:12px; border:1px solid rgba(0,194,255,0.3); font-size:0.88rem; font-weight:500; transform:translateY(80px); opacity:0; transition:all 0.3s; pointer-events:none; max-width:300px; }
+  .toast.show { transform:translateY(0); opacity:1; }
+
+  /* OVERLAYS */
+  .overlay { position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:400; display:none; align-items:flex-end; justify-content:center; }
+  .overlay.open { display:flex; }
+  #ov-add-item { z-index:500; }
+
+  .panel { background:white; border-radius:24px 24px 0 0; width:100%; max-width:480px; max-height:92vh; overflow-y:auto; padding:28px 22px; }
+  .panel-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; }
+  .panel-header h2 { font-family:'DM Serif Display',serif; font-size:1.4rem; color:var(--navy); }
+  .close-btn { background:var(--ice); border:none; width:34px; height:34px; border-radius:50%; font-size:1rem; cursor:pointer; flex-shrink:0; }
+
+  .tabs { display:flex; gap:8px; margin-bottom:22px; }
+  .tab { flex:1; padding:10px; border:1.5px solid #dce8f5; border-radius:10px; background:white; font-size:0.82rem; font-weight:600; color:var(--muted); cursor:pointer; transition:all 0.2s; text-align:center; }
+  .tab.active { background:var(--blue); color:white; border-color:var(--blue); }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+
+  .ig { margin-bottom:14px; }
+  .ig label { display:block; font-size:0.8rem; font-weight:600; color:var(--navy); margin-bottom:5px; }
+  .ig input, .ig textarea, .ig select { width:100%; padding:11px 14px; border:1.5px solid #dce8f5; border-radius:10px; font-size:0.9rem; font-family:'DM Sans',sans-serif; color:var(--text); outline:none; transition:border-color 0.2s; background:white; }
+  .ig input:focus, .ig textarea:focus, .ig select:focus { border-color:var(--sky); }
+  .ig textarea { resize:vertical; min-height:70px; }
+
+  .photo-drop { border:2px dashed #dce8f5; border-radius:12px; padding:22px; text-align:center; cursor:pointer; position:relative; transition:border-color 0.2s; }
+  .photo-drop:hover { border-color:var(--sky); }
+  .photo-drop input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+  .photo-drop .di { font-size:2rem; margin-bottom:6px; }
+  .photo-drop p { font-size:0.8rem; color:var(--muted); }
+  .pv { width:100%; height:130px; object-fit:cover; border-radius:10px; margin-top:10px; display:none; }
+
+  /* UPLOAD PROGRESS */
+  .upload-progress { display:none; margin-top:10px; }
+  .upload-progress.show { display:block; }
+  .progress-bar { height:4px; background:#dce8f5; border-radius:2px; overflow:hidden; }
+  .progress-fill { height:100%; background:var(--sky); border-radius:2px; transition:width 0.3s; width:0%; }
+  .progress-label { font-size:0.75rem; color:var(--muted); margin-top:4px; }
+
+  .btn-full { width:100%; padding:13px; background:var(--blue); color:white; border:none; border-radius:12px; font-weight:700; font-size:0.92rem; cursor:pointer; transition:background 0.2s; display:block; margin-top:8px; }
+  .btn-full:hover { background:var(--sky); }
+  .btn-full:disabled { background:#b0c4d8; cursor:not-allowed; }
+  .btn-cancel { background:transparent !important; color:var(--muted); }
+  .btn-cancel:hover { background:var(--ice) !important; color:var(--text); }
+  .btn-del { background:#fff0f0 !important; color:var(--red); }
+  .btn-del:hover { background:#ffe0e0 !important; }
+  .btn-wa { background:#25D366 !important; color:white; display:flex !important; align-items:center; justify-content:center; gap:8px; }
+  .btn-wa:hover { background:#1ebe5d !important; }
+
+  .ap-item { display:flex; align-items:center; gap:12px; padding:11px; border:1px solid #dce8f5; border-radius:12px; margin-bottom:9px; }
+  .ap-thumb { width:50px; height:50px; border-radius:8px; background:var(--ice); display:flex; align-items:center; justify-content:center; font-size:1.5rem; flex-shrink:0; overflow:hidden; }
+  .ap-thumb img { width:100%; height:100%; object-fit:cover; }
+  .ap-info { flex:1; min-width:0; }
+  .ap-name { font-weight:600; font-size:0.86rem; color:var(--navy); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ap-price { font-size:0.76rem; color:var(--muted); margin-top:2px; }
+  .ap-acts { display:flex; gap:6px; flex-shrink:0; }
+  .eb { background:var(--ice); border:none; padding:6px 11px; border-radius:8px; font-size:0.76rem; font-weight:600; color:var(--blue); cursor:pointer; }
+  .db { background:#fff0f0; border:none; padding:6px 9px; border-radius:8px; font-size:0.76rem; color:var(--red); cursor:pointer; }
+
+  /* CARRITO */
+  .cart-item { display:flex; align-items:center; gap:12px; padding:12px; border:1px solid #dce8f5; border-radius:12px; margin-bottom:9px; }
+  .cart-thumb { width:48px; height:48px; border-radius:8px; background:var(--ice); display:flex; align-items:center; justify-content:center; font-size:1.5rem; flex-shrink:0; overflow:hidden; }
+  .cart-thumb img { width:100%; height:100%; object-fit:cover; }
+  .cart-info { flex:1; min-width:0; }
+  .cart-name { font-weight:600; font-size:0.86rem; color:var(--navy); }
+  .cart-type { font-size:0.74rem; color:var(--muted); margin-top:2px; }
+  .cart-price { font-size:0.86rem; font-weight:600; color:var(--sky); margin-top:3px; }
+  .qty-ctrl { display:flex; align-items:center; gap:8px; margin-top:6px; }
+  .qty-btn { background:var(--ice); border:none; width:26px; height:26px; border-radius:50%; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--navy); }
+  .qty-num { font-weight:700; font-size:0.9rem; min-width:20px; text-align:center; }
+  .rm-btn { background:#fff0f0; border:none; padding:5px 8px; border-radius:8px; font-size:0.74rem; color:var(--red); cursor:pointer; margin-left:auto; }
+  .cart-total-box { background:var(--ice); border-radius:12px; padding:14px 16px; margin:16px 0; display:flex; justify-content:space-between; align-items:center; }
+  .cart-total-box span { font-size:0.88rem; color:var(--muted); }
+  .cart-total-box strong { font-family:'DM Serif Display',serif; font-size:1.4rem; color:var(--navy); }
+  .cart-empty { text-align:center; padding:40px 0; color:var(--muted); }
+  .cart-empty .cei { font-size:3rem; margin-bottom:12px; }
+  .payment-box { padding:11px 14px; border:1.5px solid #b7f0ce; border-radius:10px; font-size:0.9rem; color:#1a6b3a; background:#f0fff6; font-weight:600; }
+
+  /* MODAL TALLA */
+  .type-btns { display:flex; gap:8px; margin-top:4px; }
+  .type-btn { flex:1; padding:10px; border:1.5px solid #dce8f5; border-radius:10px; background:white; font-size:0.84rem; font-weight:600; color:var(--muted); cursor:pointer; text-align:center; transition:all 0.2s; }
+  .type-btn.sel { background:var(--blue); color:white; border-color:var(--blue); }
+  .sz-btns { display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
+  .sz-btn { padding:9px 14px; border:1.5px solid #dce8f5; border-radius:10px; background:white; font-size:0.84rem; font-weight:600; color:var(--muted); cursor:pointer; transition:all 0.2s; min-width:50px; text-align:center; }
+  .sz-btn.sel { background:var(--sky); color:white; border-color:var(--sky); }
+  .ai-name { font-family:'DM Serif Display',serif; font-size:1.1rem; color:var(--navy); margin-bottom:4px; line-height:1.3; }
+  .ai-prices { font-size:0.82rem; color:var(--muted); margin-bottom:18px; }
+
+  /* CONFIG PANEL */
+  .config-banner { background:linear-gradient(135deg,#fff3cd,#ffeaa7); border:1.5px solid #f0c040; border-radius:12px; padding:14px 16px; margin-bottom:20px; font-size:0.84rem; color:#7a5a00; line-height:1.6; }
+  .config-banner strong { color:#5a4000; display:block; margin-bottom:4px; }
+  .config-note { font-size:0.75rem; color:var(--muted); margin-top:6px; background:var(--ice); padding:8px 12px; border-radius:8px; line-height:1.5; }
+  .status-row { display:flex; align-items:center; gap:8px; padding:10px 14px; border-radius:10px; background:var(--ice); margin-bottom:10px; font-size:0.82rem; font-weight:600; }
+  .status-row.ok { background:#f0fff6; color:#1a6b3a; border:1px solid #b7f0ce; }
+  .status-row.err { background:#fff0f0; color:var(--red); border:1px solid #ffd0d0; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">Tienda <span>Médica</span></div>
+  <div class="nav-right">
+    <button class="admin-btn" onclick="openLogin()">⚙ Admin</button>
+    <button class="cart-btn" onclick="openCart()">🛒 <span id="cc">0</span></button>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-content">
+    <div class="hero-badge">✦ Colección 2025</div>
+    <h1>Uniformes para <em>quienes cuidan</em> la vida</h1>
+    <p>Diseñados con tela antibacterial de alta resistencia para médicos, enfermeras y personal de salud.</p>
+    <a href="#productos" class="btn-primary">Ver catálogo →</a>
+  </div>
+</section>
+
+<section class="section products-bg" id="productos">
+  <div class="section-label">
+    <span class="sync-dot" id="sync-dot"></span>Catálogo
+    <span id="sync-label" style="font-size:0.72rem;color:var(--muted);margin-left:6px;font-weight:400;text-transform:none"></span>
+  </div>
+  <h2 class="section-title">Nuestros uniformes</h2>
+  <div class="products-grid" id="grid"></div>
+</section>
+
+<section class="features">
+  <div class="section-label" style="color:var(--accent)">¿Por qué elegirnos?</div>
+  <h2 class="section-title">Calidad que se nota</h2>
+  <div class="features-grid">
+    <div class="feature"><div class="feature-icon">🧵</div><div class="feature-title">Tela antibacterial</div><div class="feature-desc">Certificada, soporta lavados industriales.</div></div>
+    <div class="feature"><div class="feature-icon">📏</div><div class="feature-title">Tallas XXS a XXL</div><div class="feature-desc">Ajuste ergonómico para largas jornadas.</div></div>
+    <div class="feature"><div class="feature-icon">🚚</div><div class="feature-title">Envío en 48h</div><div class="feature-desc">Despacho a todo el país.</div></div>
+    <div class="feature"><div class="feature-icon">🎨</div><div class="feature-title">Bordado personalizado</div><div class="feature-desc">Logo, nombre o especialidad.</div></div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-logo">Tienda <span>Médica</span></div>
+  <p>© 2025 Tienda Médica</p>
+  <p style="color:rgba(248,251,255,0.6)">📞 Contáctanos por WhatsApp</p>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<!-- ═══════════════════════════════════════════════
+     OVERLAY: CARRITO
+═══════════════════════════════════════════════ -->
+<div class="overlay" id="ov-cart">
+  <div class="panel">
+    <div class="panel-header">
+      <h2>🛒 Mi carrito</h2>
+      <button class="close-btn" onclick="closeAll()">✕</button>
+    </div>
+    <div id="cart-items"></div>
+    <div id="cart-empty" class="cart-empty">
+      <div class="cei">🛒</div>
+      <p>Tu carrito está vacío.<br>Agrega productos del catálogo.</p>
+    </div>
+    <div id="cart-footer" style="display:none">
+      <div class="cart-total-box">
+        <span>Total del pedido</span>
+        <strong id="cart-total-val">$0.00</strong>
+      </div>
+      <div class="ig"><label>👤 Tu nombre completo *</label><input type="text" id="cname" placeholder="Ej: María González"></div>
+      <div class="ig"><label>📍 Dirección exacta de entrega *</label><textarea id="caddr" placeholder="Calle, número, colonia, ciudad..."></textarea></div>
+      <div class="ig"><label>💳 Método de pago</label><div class="payment-box">✅ Pago contra entrega</div></div>
+      <button class="btn-full btn-wa" onclick="sendWA()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        Enviar pedido por WhatsApp
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     OVERLAY: SELECCIONAR TALLA Y TIPO
+═══════════════════════════════════════════════ -->
+<div class="overlay" id="ov-add-item">
+  <div class="panel">
+    <div class="panel-header">
+      <h2>🛒 Agregar al carrito</h2>
+      <button class="close-btn" onclick="closeAddItem()">✕</button>
+    </div>
+    <div class="ai-name" id="ai-name"></div>
+    <div class="ai-prices" id="ai-prices"></div>
+    <div class="ig">
+      <label>¿Qué deseas pedir?</label>
+      <div class="type-btns">
+        <button class="type-btn sel" id="tb-set"   onclick="pickType('set')">Set completo</button>
+        <button class="type-btn"     id="tb-piece" onclick="pickType('piece')">Pieza individual</button>
+      </div>
+    </div>
+    <div class="ig">
+      <label>Talla *</label>
+      <div class="sz-btns">
+        <button class="sz-btn" onclick="pickSize(this)">XXS</button>
+        <button class="sz-btn" onclick="pickSize(this)">XS</button>
+        <button class="sz-btn" onclick="pickSize(this)">S</button>
+        <button class="sz-btn" onclick="pickSize(this)">M</button>
+        <button class="sz-btn" onclick="pickSize(this)">L</button>
+        <button class="sz-btn" onclick="pickSize(this)">XL</button>
+        <button class="sz-btn" onclick="pickSize(this)">XXL</button>
+      </div>
+    </div>
+    <button class="btn-full" style="margin-top:16px" onclick="confirmAdd()">✅ Confirmar</button>
+    <button class="btn-full btn-cancel" onclick="closeAddItem()">Cancelar</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     OVERLAY: LOGIN
+═══════════════════════════════════════════════ -->
+<div class="overlay" id="ov-login">
+  <div class="panel">
+    <div class="panel-header">
+      <h2>🔐 Panel Admin</h2>
+      <button class="close-btn" onclick="closeAll()">✕</button>
+    </div>
+    <p style="color:var(--muted);font-size:0.85rem;margin-bottom:20px">Ingresa tu contraseña</p>
+    <div class="ig"><label>Contraseña</label><input type="password" id="pw" placeholder="••••••••" onkeydown="if(event.key==='Enter')login()"></div>
+    <div id="pwerr" style="color:var(--red);font-size:0.8rem;margin-bottom:12px;display:none">Contraseña incorrecta</div>
+    <button class="btn-full" onclick="login()">Entrar</button>
+    <button class="btn-full btn-cancel" onclick="closeAll()">Cancelar</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     OVERLAY: ADMIN
+═══════════════════════════════════════════════ -->
+<div class="overlay" id="ov-admin">
+  <div class="panel">
+    <div class="panel-header">
+      <h2>⚙ Administrar</h2>
+      <button class="close-btn" onclick="closeAll()">✕</button>
+    </div>
+
+    <!-- Status de conexión Supabase -->
+    <div id="sb-status-row" class="status-row" style="display:none"></div>
+
+    <div class="tabs">
+      <button class="tab active" id="t-add"  onclick="switchTab('add')">➕ Agregar</button>
+      <button class="tab"        id="t-edit" onclick="switchTab('edit')">✏️ Editar</button>
+      <button class="tab"        id="t-cfg"  onclick="switchTab('cfg')">🔗 Supabase</button>
+    </div>
+
+    <!-- TAB: AGREGAR -->
+    <div class="tab-content active" id="tc-add">
+      <div class="ig">
+        <label>Foto del producto</label>
+        <div class="photo-drop" id="drop-add">
+          <input type="file" accept="image/*" onchange="previewPhoto(this,'pv-add','add')">
+          <div class="di" id="icon-add">📷</div>
+          <p id="txt-add">Toca para elegir de tu galería</p>
+          <img class="pv" id="pv-add">
+        </div>
+        <div class="upload-progress" id="prog-add">
+          <div class="progress-bar"><div class="progress-fill" id="prog-add-fill"></div></div>
+          <div class="progress-label" id="prog-add-label">Subiendo imagen…</div>
+        </div>
+      </div>
+      <div class="ig"><label>Nombre *</label><input type="text" id="an" placeholder="Ej: Filipina azul manga corta"></div>
+      <div class="ig"><label>Categoría</label>
+        <select id="ac">
+          <option>Médicos</option><option>Enfermería</option><option>Odontología</option>
+          <option>Laboratorio</option><option>Quirúrgico</option><option>Pediatría</option><option>Otro</option>
+        </select>
+      </div>
+      <div class="ig"><label>Descripción</label><textarea id="ad" placeholder="Color, material, detalles..."></textarea></div>
+      <div class="ig"><label>Precio set completo ($) *</label><input type="number" id="ap" placeholder="35.00" step="0.01" min="0"></div>
+      <div class="ig"><label>Precio pieza individual ($) *</label><input type="number" id="app" placeholder="17.50" step="0.01" min="0"></div>
+      <div class="ig"><label>Etiqueta (opcional)</label><input type="text" id="ab" placeholder="Nuevo, Oferta, Top..."></div>
+      <button class="btn-full" id="btn-add-prod" onclick="addProd()">✅ Agregar al catálogo</button>
+    </div>
+
+    <!-- TAB: EDITAR -->
+    <div class="tab-content" id="tc-edit">
+      <div id="ap-list"></div>
+      <div id="ap-empty" style="text-align:center;color:var(--muted);padding:40px 0;display:none">
+        <div style="font-size:2.5rem;margin-bottom:10px">📭</div>
+        <p>Sin productos aún.<br>Agrega uno en ➕</p>
+      </div>
+    </div>
+
+    <!-- TAB: SUPABASE CONFIG -->
+    <div class="tab-content" id="tc-cfg">
+      <div class="config-banner">
+        <strong>🔑 Credenciales de Supabase</strong>
+        Pega aquí tu URL y Anon Key del proyecto. Se guardan en este navegador.
+      </div>
+      <div class="ig">
+        <label>Project URL</label>
+        <input type="text" id="sb-url-input" placeholder="https://xxxx.supabase.co">
+      </div>
+      <div class="ig">
+        <label>Anon / Public Key</label>
+        <input type="text" id="sb-key-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+      </div>
+      <button class="btn-full" onclick="saveSupabaseConfig()">💾 Guardar y conectar</button>
+      <button class="btn-full btn-cancel" onclick="clearSupabaseConfig()">🗑 Borrar credenciales</button>
+      <div class="config-note">
+        📍 Encuéntralas en tu proyecto Supabase:<br>
+        <strong>Settings → API → Project URL</strong> y <strong>anon public</strong><br><br>
+        También puedes definirlas como variables de entorno en tu servidor con:<br>
+        <code>SUPABASE_URL</code> y <code>SUPABASE_ANON_KEY</code>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     OVERLAY: EDITAR PRODUCTO
+═══════════════════════════════════════════════ -->
+<div class="overlay" id="ov-edit">
+  <div class="panel">
+    <div class="panel-header">
+      <h2>✏️ Editar producto</h2>
+      <button class="close-btn" onclick="backToAdmin()">✕</button>
+    </div>
+    <div class="ig">
+      <label>Foto</label>
+      <div class="photo-drop" id="drop-edit">
+        <input type="file" accept="image/*" onchange="previewPhoto(this,'pv-edit','edit')">
+        <div class="di" id="icon-edit">📷</div>
+        <p id="txt-edit">Cambiar foto</p>
+        <img class="pv" id="pv-edit">
+      </div>
+      <div class="upload-progress" id="prog-edit">
+        <div class="progress-bar"><div class="progress-fill" id="prog-edit-fill"></div></div>
+        <div class="progress-label" id="prog-edit-label">Subiendo imagen…</div>
+      </div>
+    </div>
+    <div class="ig"><label>Nombre</label><input type="text" id="en"></div>
+    <div class="ig"><label>Categoría</label>
+      <select id="ec">
+        <option>Médicos</option><option>Enfermería</option><option>Odontología</option>
+        <option>Laboratorio</option><option>Quirúrgico</option><option>Pediatría</option><option>Otro</option>
+      </select>
+    </div>
+    <div class="ig"><label>Descripción</label><textarea id="ed"></textarea></div>
+    <div class="ig"><label>Precio set ($)</label><input type="number" id="ep" step="0.01" min="0"></div>
+    <div class="ig"><label>Precio pieza ($)</label><input type="number" id="epp" step="0.01" min="0"></div>
+    <div class="ig"><label>Etiqueta</label><input type="text" id="eb2"></div>
+    <button class="btn-full" id="btn-save-edit" onclick="saveEdit()">💾 Guardar cambios</button>
+    <button class="btn-full btn-del" onclick="delProd()">🗑 Eliminar producto</button>
+    <button class="btn-full btn-cancel" onclick="backToAdmin()">Cancelar</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     JAVASCRIPT
+═══════════════════════════════════════════════ -->
+<script>
+/* ════════════════════════════════════════════════
+   CONFIG
+════════════════════════════════════════════════ */
+const PW        = '1234';
+const WA_NUMBER = '50379540523';
+
+// ✅ CREDENCIALES SUPABASE — ya configuradas
+const ENV_URL = 'https://ijlsuiwwpsrnevjpbmmo.supabase.co';
+const ENV_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlqbHN1aXd3cHNybmV2anBibW1vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2MzI3MzMsImV4cCI6MjA5NDIwODczM30.Rv6KMhuDuhb90mvQPfkAWp8pwupBE_sHhMwfnyM5sX4';
+
+/* ════════════════════════════════════════════════
+   SUPABASE — INICIALIZACIÓN DINÁMICA
+════════════════════════════════════════════════ */
+let supabase = null;
+let realtimeChannel = null;
+
+function getStoredConfig() {
+  return {
+    url: ENV_URL || localStorage.getItem('sb_url') || '',
+    key: ENV_KEY || localStorage.getItem('sb_key') || ''
+  };
+}
+
+function initSupabase() {
+  const { url, key } = getStoredConfig();
+  if (!url || !key) {
+    setSyncStatus('none');
+    return false;
+  }
+  try {
+    supabase = window.supabase.createClient(url, key);
+    setSyncStatus('connecting');
+    subscribeRealtime();
+    return true;
+  } catch(e) {
+    console.error('Supabase init error:', e);
+    setSyncStatus('error');
+    return false;
+  }
+}
+
+/* ════════════════════════════════════════════════
+   REALTIME — SUSCRIPCIÓN EN TIEMPO REAL
+════════════════════════════════════════════════ */
+function subscribeRealtime() {
+  if (!supabase) return;
+  if (realtimeChannel) supabase.removeChannel(realtimeChannel);
+
+  realtimeChannel = supabase
+    .channel('products-live')
+    .on('postgres_changes', {
+      event: '*',         // INSERT, UPDATE, DELETE
+      schema: 'public',
+      table:  'products'
+    }, payload => {
+      console.log('Realtime event:', payload.eventType, payload);
+      // Recarga silenciosa del catálogo al detectar cambios
+      loadProducts(true);
+      if (payload.eventType === 'INSERT') toast('🆕 Nuevo producto disponible');
+      if (payload.eventType === 'UPDATE') toast('🔄 Producto actualizado');
+      if (payload.eventType === 'DELETE') toast('🗑 Producto eliminado');
+    })
+    .subscribe(status => {
+      if (status === 'SUBSCRIBED') setSyncStatus('live');
+      if (status === 'CHANNEL_ERROR') setSyncStatus('error');
+    });
+}
+
+/* ════════════════════════════════════════════════
+   SYNC STATUS INDICATOR
+════════════════════════════════════════════════ */
+function setSyncStatus(state) {
+  const dot   = document.getElementById('sync-dot');
+  const label = document.getElementById('sync-label');
+  dot.className = 'sync-dot';
+  if (state === 'live') {
+    dot.classList.add('live');
+    label.textContent = 'En vivo · Supabase';
+  } else if (state === 'connecting') {
+    label.textContent = 'Conectando…';
+  } else if (state === 'error') {
+    dot.classList.add('error');
+    label.textContent = 'Error de conexión';
+  } else if (state === 'offline') {
+    label.textContent = 'Modo sin conexión';
+  } else {
+    label.textContent = 'Sin configurar';
+  }
+}
+
+/* ════════════════════════════════════════════════
+   ESTADO LOCAL
+════════════════════════════════════════════════ */
+let prods     = [];
+let cart      = [];
+let ei        = -1;       // índice del producto en edición
+let editId    = null;     // ID de Supabase del producto en edición
+let newPhoto  = null;     // { file, base64 } — foto nueva en formulario Add
+let editPhoto = null;     // { file, base64 } — foto nueva en formulario Edit
+let aiIndex   = -1;
+let aiType    = 'set';
+let aiSize    = '';
+
+/* ════════════════════════════════════════════════
+   CARGAR PRODUCTOS DESDE SUPABASE
+════════════════════════════════════════════════ */
+async function loadProducts(silent = false) {
+  if (!supabase) {
+    // Modo offline: usa localStorage como fallback
+    prods = JSON.parse(localStorage.getItem('tm_prods') || '[]');
+    render();
+    setSyncStatus('offline');
+    return;
+  }
+
+  if (!silent) renderSkeletons();
+
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('active', true)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Mapear campos de Supabase al formato interno
+    prods = (data || []).map(row => ({
+      id:    row.id,
+      name:  row.name,
+      cat:   row.category || 'Otro',
+      desc:  row.description || '',
+      price: parseFloat(row.price_set  || 0).toFixed(2),
+      piece: parseFloat(row.price_unit || 0).toFixed(2),
+      badge: row.badge || '',
+      photo: row.image_url || null
+    }));
+
+    render();
+    setSyncStatus('live');
+  } catch(err) {
+    console.error('Error loading products:', err);
+    // Fallback a localStorage
+    prods = JSON.parse(localStorage.getItem('tm_prods') || '[]');
+    render();
+    setSyncStatus('error');
+    toast('⚠️ Error al cargar desde Supabase. Mostrando caché local.');
+  }
+}
+
+/* ════════════════════════════════════════════════
+   SUBIR IMAGEN A SUPABASE STORAGE
+════════════════════════════════════════════════ */
+async function uploadImage(file, progressKey) {
+  // Convierte la imagen a base64 comprimida y la guarda directamente en Supabase
+  return new Promise((resolve, reject) => {
+    showProgress(progressKey, 20, 'Procesando imagen…');
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        // Redimensionar a máx 800px para no ocupar mucho espacio
+        const MAX = 800;
+        let w = img.width, h = img.height;
+        if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+        if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const base64 = canvas.toDataURL('image/jpeg', 0.82);
+        showProgress(progressKey, 100, '✅ Imagen lista');
+        setTimeout(() => hideProgress(progressKey), 800);
+        resolve(base64);
+      };
+      img.onerror = () => reject(new Error('No se pudo procesar la imagen'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function showProgress(key, pct, label) {
+  const prog = document.getElementById('prog-' + key);
+  const fill = document.getElementById('prog-' + key + '-fill');
+  const lbl  = document.getElementById('prog-' + key + '-label');
+  if (!prog) return;
+  prog.classList.add('show');
+  fill.style.width = pct + '%';
+  lbl.textContent  = label;
+}
+function hideProgress(key) {
+  const prog = document.getElementById('prog-' + key);
+  if (prog) prog.classList.remove('show');
+}
+
+/* ════════════════════════════════════════════════
+   OVERLAYS
+════════════════════════════════════════════════ */
+function closeAll() {
+  document.querySelectorAll('.overlay').forEach(o => o.classList.remove('open'));
+}
+function openPanel(id) {
+  document.querySelectorAll('.overlay').forEach(o => {
+    if (o.id !== 'ov-add-item') o.classList.remove('open');
+  });
+  document.getElementById(id).classList.add('open');
+}
+function closeAddItem() {
+  document.getElementById('ov-add-item').classList.remove('open');
+}
+
+/* ════════════════════════════════════════════════
+   TOAST
+════════════════════════════════════════════════ */
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(window._tt);
+  window._tt = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+/* ════════════════════════════════════════════════
+   LOGIN
+════════════════════════════════════════════════ */
+function openLogin() {
+  openPanel('ov-login');
+  document.getElementById('pw').value = '';
+  document.getElementById('pwerr').style.display = 'none';
+  setTimeout(() => document.getElementById('pw').focus(), 300);
+}
+
+function login() {
+  if (document.getElementById('pw').value === PW) {
+    openPanel('ov-admin');
+    renderAdminList();
+    switchTab('add');
+    updateAdminStatusRow();
+    loadConfigInputs();
+  } else {
+    document.getElementById('pwerr').style.display = 'block';
+  }
+}
+
+function updateAdminStatusRow() {
+  const row = document.getElementById('sb-status-row');
+  const { url } = getStoredConfig();
+  if (supabase && url) {
+    row.style.display = 'flex';
+    row.className = 'status-row ok';
+    row.innerHTML = '✅ Conectado a Supabase · ' + url.replace('https://','').split('.')[0];
+  } else {
+    row.style.display = 'flex';
+    row.className = 'status-row err';
+    row.innerHTML = '⚠️ Sin conexión a Supabase — ve a la pestaña 🔗 para configurar';
+  }
+}
+
+/* ════════════════════════════════════════════════
+   TABS ADMIN
+════════════════════════════════════════════════ */
+function switchTab(t) {
+  ['add','edit','cfg'].forEach(x => {
+    document.getElementById('t-'  + x).classList.toggle('active', x === t);
+    document.getElementById('tc-' + x).classList.toggle('active', x === t);
+  });
+  if (t === 'edit') renderAdminList();
+  if (t === 'cfg')  loadConfigInputs();
+}
+
+/* ════════════════════════════════════════════════
+   CONFIG SUPABASE (desde panel admin)
+════════════════════════════════════════════════ */
+function loadConfigInputs() {
+  const { url, key } = getStoredConfig();
+  document.getElementById('sb-url-input').value = url;
+  document.getElementById('sb-key-input').value = key;
+}
+
+async function saveSupabaseConfig() {
+  const url = document.getElementById('sb-url-input').value.trim();
+  const key = document.getElementById('sb-key-input').value.trim();
+  if (!url || !key) { toast('⚠️ URL y Key son obligatorios'); return; }
+  localStorage.setItem('sb_url', url);
+  localStorage.setItem('sb_key', key);
+  toast('💾 Credenciales guardadas. Conectando…');
+  initSupabase();
+  await loadProducts();
+  updateAdminStatusRow();
+}
+
+function clearSupabaseConfig() {
+  if (!confirm('¿Borrar credenciales de Supabase?')) return;
+  localStorage.removeItem('sb_url');
+  localStorage.removeItem('sb_key');
+  supabase = null;
+  if (realtimeChannel) realtimeChannel = null;
+  setSyncStatus('none');
+  toast('🗑 Credenciales borradas');
+  updateAdminStatusRow();
+}
+
+/* ════════════════════════════════════════════════
+   SKELETON LOADERS
+════════════════════════════════════════════════ */
+function renderSkeletons() {
+  const g = document.getElementById('grid');
+  g.innerHTML = Array(6).fill(0).map(() => `
+    <div class="skeleton">
+      <div class="skel-img"></div>
+      <div class="skel-body">
+        <div class="skel-line w40"></div>
+        <div class="skel-line w80"></div>
+        <div class="skel-line w60"></div>
+      </div>
+    </div>`).join('');
+}
+
+/* ════════════════════════════════════════════════
+   CATÁLOGO
+════════════════════════════════════════════════ */
+function render() {
+  const g = document.getElementById('grid');
+  if (!prods.length) {
+    g.innerHTML = `<div class="empty-state"><div class="ei">🏥</div><p>Aún no hay productos.<br>Usa el panel <b>Admin</b> para agregar tu catálogo.</p></div>`;
+    return;
+  }
+  g.innerHTML = prods.map((p, i) => `
+    <div class="product-card">
+      <div class="product-img">
+        ${p.badge ? `<div class="product-badge">${p.badge}</div>` : ''}
+        ${p.photo ? `<img src="${p.photo}" alt="${p.name}" loading="lazy">` : '🥼'}
+      </div>
+      <div class="product-info">
+        <div class="product-category">${p.cat}</div>
+        <div class="product-name">${p.name}</div>
+        <div class="product-desc">${p.desc || ''}</div>
+        <div class="product-footer">
+          <div class="product-price">$${p.price}<small>Set completo</small><span class="piece">$${p.piece} pieza individual</span></div>
+          <button class="add-btn" onclick="openAddCart(${i})">+</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+/* ════════════════════════════════════════════════
+   AGREGAR PRODUCTO → SUPABASE
+════════════════════════════════════════════════ */
+async function addProd() {
+  const name  = document.getElementById('an').value.trim();
+  const price = document.getElementById('ap').value;
+  const piece = document.getElementById('app').value;
+  if (!name || !price || !piece) { toast('⚠️ Nombre y precios son obligatorios'); return; }
+
+  const btn = document.getElementById('btn-add-prod');
+  btn.disabled = true;
+  btn.textContent = '⏳ Guardando…';
+
+  try {
+    let imageUrl = null;
+
+    // 1. Procesar imagen si existe (se guarda como base64 comprimida)
+    if (newPhoto?.file) {
+      imageUrl = await uploadImage(newPhoto.file, 'add');
+    } else if (newPhoto?.base64) {
+      imageUrl = newPhoto.base64;
+    }
+
+    const productData = {
+      name:        name,
+      category:    document.getElementById('ac').value,
+      description: document.getElementById('ad').value,
+      price_set:   parseFloat(price),
+      price_unit:  parseFloat(piece),
+      badge:       document.getElementById('ab').value.trim() || null,
+      image_url:   imageUrl,
+      active:      true
+    };
+
+    if (supabase) {
+      // 2. Insertar en Supabase
+      const { data, error } = await supabase
+        .from('products')
+        .insert([productData])
+        .select()
+        .single();
+
+      if (error) throw error;
+      toast('✅ Producto guardado en Supabase');
+
+      // El realtime se encargará de recargar, pero actualizamos localmente también
+      prods.unshift({
+        id:    data.id,
+        name:  data.name,
+        cat:   data.category,
+        desc:  data.description,
+        price: parseFloat(data.price_set).toFixed(2),
+        piece: parseFloat(data.price_unit).toFixed(2),
+        badge: data.badge || '',
+        photo: data.image_url
+      });
+    } else {
+      // Modo offline: localStorage
+      prods.unshift({
+        name:  productData.name,
+        cat:   productData.category,
+        desc:  productData.description,
+        price: parseFloat(productData.price_set).toFixed(2),
+        piece: parseFloat(productData.price_unit).toFixed(2),
+        badge: productData.badge || '',
+        photo: imageUrl
+      });
+      localStorage.setItem('tm_prods', JSON.stringify(prods));
+      toast('✅ Producto guardado localmente');
+    }
+
+    render();
+    resetAddForm();
+    closeAll();
+
+  } catch(err) {
+    console.error('Error adding product:', err);
+    toast('❌ Error: ' + (err.message || 'No se pudo guardar'));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✅ Agregar al catálogo';
+  }
+}
+
+function resetAddForm() {
+  ['an','ad','ab'].forEach(id => document.getElementById(id).value = '');
+  ['ap','app'].forEach(id => document.getElementById(id).value = '');
+  const pv = document.getElementById('pv-add');
+  pv.style.display = 'none'; pv.src = '';
+  document.getElementById('icon-add').style.display = '';
+  document.getElementById('txt-add').style.display  = '';
+  newPhoto = null;
+}
+
+/* ════════════════════════════════════════════════
+   LISTA ADMIN
+════════════════════════════════════════════════ */
+function renderAdminList() {
+  const list  = document.getElementById('ap-list');
+  const empty = document.getElementById('ap-empty');
+  if (!prods.length) {
+    list.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = prods.map((p, i) => `
+    <div class="ap-item">
+      <div class="ap-thumb">${p.photo ? `<img src="${p.photo}" alt="${p.name}">` : '🥼'}</div>
+      <div class="ap-info">
+        <div class="ap-name">${p.name}</div>
+        <div class="ap-price">Set: $${p.price} · Pieza: $${p.piece}</div>
+      </div>
+      <div class="ap-acts">
+        <button class="eb" onclick="openEdit(${i})">✏️</button>
+        <button class="db" onclick="quickDel(${i})">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+/* ════════════════════════════════════════════════
+   EDITAR PRODUCTO
+════════════════════════════════════════════════ */
+function openEdit(i) {
+  ei = i;
+  editId = prods[i].id || null;
+  editPhoto = null;
+  const p = prods[i];
+  document.getElementById('en').value  = p.name;
+  document.getElementById('ec').value  = p.cat;
+  document.getElementById('ed').value  = p.desc  || '';
+  document.getElementById('ep').value  = p.price;
+  document.getElementById('epp').value = p.piece;
+  document.getElementById('eb2').value = p.badge || '';
+  const pv = document.getElementById('pv-edit');
+  if (p.photo) {
+    pv.src = p.photo; pv.style.display = 'block';
+    document.getElementById('icon-edit').style.display = 'none';
+    document.getElementById('txt-edit').style.display  = 'none';
+  } else {
+    pv.style.display = 'none';
+    document.getElementById('icon-edit').style.display = '';
+    document.getElementById('txt-edit').style.display  = '';
+  }
+  openPanel('ov-edit');
+}
+
+function backToAdmin() {
+  openPanel('ov-admin');
+  renderAdminList();
+}
+
+async function saveEdit() {
+  const btn = document.getElementById('btn-save-edit');
+  btn.disabled = true;
+  btn.textContent = '⏳ Guardando…';
+
+  try {
+    let imageUrl = prods[ei].photo;
+
+    // Procesar nueva foto si se cambió
+    if (editPhoto?.file) {
+      imageUrl = await uploadImage(editPhoto.file, 'edit');
+    } else if (editPhoto?.base64) {
+      imageUrl = editPhoto.base64;
+    }
+
+    const updates = {
+      name:        document.getElementById('en').value.trim(),
+      category:    document.getElementById('ec').value,
+      description: document.getElementById('ed').value,
+      price_set:   parseFloat(document.getElementById('ep').value),
+      price_unit:  parseFloat(document.getElementById('epp').value),
+      badge:       document.getElementById('eb2').value.trim() || null,
+      image_url:   imageUrl,
+      updated_at:  new Date().toISOString()
+    };
+
+    if (supabase && editId) {
+      const { error } = await supabase
+        .from('products')
+        .update(updates)
+        .eq('id', editId);
+      if (error) throw error;
+      toast('✅ Cambios guardados en Supabase');
+    } else {
+      toast('✅ Cambios guardados localmente');
+    }
+
+    // Actualizar local
+    prods[ei] = {
+      ...prods[ei],
+      name:  updates.name,
+      cat:   updates.category,
+      desc:  updates.description,
+      price: parseFloat(updates.price_set).toFixed(2),
+      piece: parseFloat(updates.price_unit).toFixed(2),
+      badge: updates.badge || '',
+      photo: imageUrl
+    };
+
+    if (!supabase) localStorage.setItem('tm_prods', JSON.stringify(prods));
+    render();
+    backToAdmin();
+
+  } catch(err) {
+    console.error('Error saving edit:', err);
+    toast('❌ Error: ' + (err.message || 'No se pudo guardar'));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💾 Guardar cambios';
+  }
+}
+
+async function delProd() {
+  if (!confirm(`¿Eliminar "${prods[ei].name}"?`)) return;
+  try {
+    if (supabase && editId) {
+      // Soft delete: marcar como inactive
+      const { error } = await supabase
+        .from('products')
+        .update({ active: false })
+        .eq('id', editId);
+      if (error) throw error;
+      toast('🗑 Eliminado de Supabase');
+    }
+    prods.splice(ei, 1);
+    if (!supabase) localStorage.setItem('tm_prods', JSON.stringify(prods));
+    render();
+    backToAdmin();
+  } catch(err) {
+    console.error('Error deleting:', err);
+    toast('❌ Error al eliminar: ' + err.message);
+  }
+}
+
+async function quickDel(i) {
+  if (!confirm(`¿Eliminar "${prods[i].name}"?`)) return;
+  try {
+    if (supabase && prods[i].id) {
+      const { error } = await supabase
+        .from('products')
+        .update({ active: false })
+        .eq('id', prods[i].id);
+      if (error) throw error;
+    }
+    prods.splice(i, 1);
+    if (!supabase) localStorage.setItem('tm_prods', JSON.stringify(prods));
+    render();
+    renderAdminList();
+    toast('🗑 Eliminado');
+  } catch(err) {
+    toast('❌ Error al eliminar: ' + err.message);
+  }
+}
+
+/* ════════════════════════════════════════════════
+   FOTOS — PREVIEW LOCAL + GUARDAR FILE PARA SUBIR
+════════════════════════════════════════════════ */
+function previewPhoto(input, pvId, key) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const base64 = e.target.result;
+    if (key === 'add') newPhoto  = { file, base64 };
+    else               editPhoto = { file, base64 };
+
+    const pv = document.getElementById(pvId);
+    pv.src = base64;
+    pv.style.display = 'block';
+    document.getElementById('icon-' + key).style.display = 'none';
+    document.getElementById('txt-'  + key).style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ════════════════════════════════════════════════
+   CARRITO — AGREGAR
+════════════════════════════════════════════════ */
+function openAddCart(i) {
+  aiIndex = i;
+  aiType  = 'set';
+  aiSize  = '';
+  const p = prods[i];
+  document.getElementById('ai-name').textContent   = p.name;
+  document.getElementById('ai-prices').textContent = `Set: $${p.price}   ·   Pieza: $${p.piece}`;
+  document.getElementById('tb-set').classList.add('sel');
+  document.getElementById('tb-piece').classList.remove('sel');
+  document.querySelectorAll('.sz-btn').forEach(b => b.classList.remove('sel'));
+  document.getElementById('ov-add-item').classList.add('open');
+}
+
+function pickType(t) {
+  aiType = t;
+  document.getElementById('tb-set').classList.toggle('sel',   t === 'set');
+  document.getElementById('tb-piece').classList.toggle('sel', t === 'piece');
+}
+
+function pickSize(btn) {
+  aiSize = btn.textContent.trim();
+  document.querySelectorAll('.sz-btn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+}
+
+function confirmAdd() {
+  if (!aiSize) { toast('⚠️ Selecciona una talla'); return; }
+  const found = cart.find(c => c.prodIndex === aiIndex && c.type === aiType && c.size === aiSize);
+  if (found) {
+    found.qty++;
+  } else {
+    cart.push({ prodIndex: aiIndex, type: aiType, size: aiSize, qty: 1 });
+  }
+  updateCartCount();
+  toast(`✓ Agregado — Talla ${aiSize} · ${aiType === 'set' ? 'Set completo' : 'Pieza individual'}`);
+  closeAddItem();
+}
+
+function updateCartCount() {
+  document.getElementById('cc').textContent = cart.reduce((s, c) => s + c.qty, 0);
+}
+
+/* ════════════════════════════════════════════════
+   CARRITO — VER
+════════════════════════════════════════════════ */
+function openCart() {
+  renderCart();
+  openPanel('ov-cart');
+}
+
+function cartTotal() {
+  return cart.reduce((s, c) => {
+    const p = prods[c.prodIndex];
+    return s + (c.type === 'set' ? parseFloat(p.price) : parseFloat(p.piece)) * c.qty;
+  }, 0);
+}
+
+function renderCart() {
+  const items  = document.getElementById('cart-items');
+  const empty  = document.getElementById('cart-empty');
+  const footer = document.getElementById('cart-footer');
+
+  if (!cart.length) {
+    items.innerHTML      = '';
+    empty.style.display  = 'block';
+    footer.style.display = 'none';
+    return;
+  }
+  empty.style.display  = 'none';
+  footer.style.display = 'block';
+
+  items.innerHTML = cart.map((c, i) => {
+    const p     = prods[c.prodIndex];
+    const price = c.type === 'set' ? p.price : p.piece;
+    const lbl   = c.type === 'set' ? 'Set completo' : 'Pieza individual';
+    return `<div class="cart-item">
+      <div class="cart-thumb">${p.photo ? `<img src="${p.photo}" alt="${p.name}">` : '🥼'}</div>
+      <div class="cart-info">
+        <div class="cart-name">${p.name}</div>
+        <div class="cart-type">${lbl} · Talla ${c.size} · $${price} c/u</div>
+        <div class="cart-price">Subtotal: $${(parseFloat(price) * c.qty).toFixed(2)}</div>
+        <div class="qty-ctrl">
+          <button class="qty-btn" onclick="changeQty(${i},-1)">−</button>
+          <span class="qty-num">${c.qty}</span>
+          <button class="qty-btn" onclick="changeQty(${i},1)">+</button>
+          <button class="rm-btn" onclick="removeCart(${i})">🗑 Quitar</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('cart-total-val').textContent = '$' + cartTotal().toFixed(2);
+}
+
+function changeQty(i, d) {
+  cart[i].qty += d;
+  if (cart[i].qty <= 0) cart.splice(i, 1);
+  updateCartCount();
+  renderCart();
+}
+
+function removeCart(i) {
+  cart.splice(i, 1);
+  updateCartCount();
+  renderCart();
+}
+
+/* ════════════════════════════════════════════════
+   WHATSAPP
+════════════════════════════════════════════════ */
+function sendWA() {
+  const name = document.getElementById('cname').value.trim();
+  const addr = document.getElementById('caddr').value.trim();
+  if (!name || !addr) { toast('⚠️ Nombre y dirección son obligatorios'); return; }
+  if (!cart.length)   { toast('⚠️ El carrito está vacío'); return; }
+
+  let msg = `🏥 *NUEVO PEDIDO - Tienda Médica*\n\n`;
+  msg += `👤 *Cliente:* ${name}\n`;
+  msg += `📍 *Dirección:* ${addr}\n`;
+  msg += `💳 *Pago:* Contra entrega\n`;
+  msg += `\n🛒 *Productos:*\n`;
+  cart.forEach(c => {
+    const p     = prods[c.prodIndex];
+    const price = c.type === 'set' ? p.price : p.piece;
+    const type  = c.type === 'set' ? 'Set completo' : 'Pieza individual';
+    msg += `• ${p.name} (${type}) Talla ${c.size} x${c.qty} = $${(parseFloat(price) * c.qty).toFixed(2)}\n`;
+  });
+  msg += `\n💰 *TOTAL: $${cartTotal().toFixed(2)}*`;
+
+  window.open(`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+/* ════════════════════════════════════════════════
+   INICIO
+════════════════════════════════════════════════ */
+initSupabase();
+loadProducts();
+</script>
+</body>
+</html>
