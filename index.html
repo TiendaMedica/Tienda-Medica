@@ -876,7 +876,7 @@ async function addProd() {
         toast('✅ Producto guardado y sincronizado ☁️');
       } catch(sbErr) {
         console.warn('Supabase sync failed, saved locally:', sbErr.message);
-        toast('✅ Guardado localmente (Supabase no disponible)');
+        toast('❌ Error: ' + sbErr.message);
       }
     } else {
       toast('✅ Producto agregado al catálogo');
