@@ -336,9 +336,10 @@
     <div id="sb-status-row" class="status-row" style="display:none"></div>
 
     <div class="tabs">
-      <button class="tab active" id="t-add"  onclick="switchTab('add')">➕ Agregar</button>
-      <button class="tab"        id="t-edit" onclick="switchTab('edit')">✏️ Editar</button>
-      <button class="tab"        id="t-cfg"  onclick="switchTab('cfg')">🔗 Supabase</button>
+      <button class="tab active" id="t-add"    onclick="switchTab('add')">➕ Agregar</button>
+      <button class="tab"        id="t-edit"   onclick="switchTab('edit')">✏️ Editar</button>
+      <button class="tab"        id="t-orders" onclick="switchTab('orders')">📦 Pedidos</button>
+      <button class="tab"        id="t-cfg"    onclick="switchTab('cfg')">🔗 Config</button>
     </div>
 
     <!-- TAB: AGREGAR -->
@@ -376,6 +377,18 @@
       <div id="ap-empty" style="text-align:center;color:var(--muted);padding:40px 0;display:none">
         <div style="font-size:2.5rem;margin-bottom:10px">📭</div>
         <p>Sin productos aún.<br>Agrega uno en ➕</p>
+      </div>
+    </div>
+
+    <!-- TAB: PEDIDOS -->
+    <div class="tab-content" id="tc-orders">
+      <div id="orders-list"></div>
+      <div id="orders-empty" style="text-align:center;color:var(--muted);padding:40px 0;display:none">
+        <div style="font-size:2.5rem;margin-bottom:10px">📭</div>
+        <p>Sin pedidos aún.</p>
+      </div>
+      <div id="orders-loading" style="text-align:center;color:var(--muted);padding:40px 0">
+        <p>Cargando pedidos...</p>
       </div>
     </div>
 
@@ -625,14 +638,14 @@ async function uploadImage(file, progressKey) {
       const img = new Image();
       img.onload = () => {
         // Redimensionar a máx 800px para no ocupar mucho espacio
-        const MAX = 400;
+        const MAX = 800;
         let w = img.width, h = img.height;
         if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
         if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        const base64 = canvas.toDataURL('image/jpeg', 0.5);
+        const base64 = canvas.toDataURL('image/jpeg', 0.82);
         showProgress(progressKey, 100, '✅ Imagen lista');
         setTimeout(() => hideProgress(progressKey), 800);
         resolve(base64);
@@ -726,12 +739,13 @@ function updateAdminStatusRow() {
    TABS ADMIN
 ════════════════════════════════════════════════ */
 function switchTab(t) {
-  ['add','edit','cfg'].forEach(x => {
-    document.getElementById('t-'  + x).classList.toggle('active', x === t);
-    document.getElementById('tc-' + x).classList.toggle('active', x === t);
+  ['add','edit','orders','cfg'].forEach(x => {
+    document.getElementById('t-'  + x)?.classList.toggle('active', x === t);
+    document.getElementById('tc-' + x)?.classList.toggle('active', x === t);
   });
-  if (t === 'edit') renderAdminList();
-  if (t === 'cfg')  loadConfigInputs();
+  if (t === 'edit')   renderAdminList();
+  if (t === 'cfg')    loadConfigInputs();
+  if (t === 'orders') loadOrders();
 }
 
 /* ════════════════════════════════════════════════
@@ -876,7 +890,7 @@ async function addProd() {
         toast('✅ Producto guardado y sincronizado ☁️');
       } catch(sbErr) {
         console.warn('Supabase sync failed, saved locally:', sbErr.message);
-        toast('❌ Error: ' + sbErr.message);
+        toast('✅ Guardado localmente (Supabase no disponible)');
       }
     } else {
       toast('✅ Producto agregado al catálogo');
@@ -1200,26 +1214,120 @@ function removeCart(i) {
 /* ════════════════════════════════════════════════
    WHATSAPP
 ════════════════════════════════════════════════ */
-function sendWA() {
+async function sendWA() {
   const name = document.getElementById('cname').value.trim();
   const addr = document.getElementById('caddr').value.trim();
   if (!name || !addr) { toast('⚠️ Nombre y dirección son obligatorios'); return; }
   if (!cart.length)   { toast('⚠️ El carrito está vacío'); return; }
 
+  const items = cart.map(c => {
+    const p     = prods[c.prodIndex];
+    const price = c.type === 'set' ? p.price : p.piece;
+    const type  = c.type === 'set' ? 'Set completo' : 'Pieza individual';
+    return { name: p.name, type, size: c.size, qty: c.qty, price: parseFloat(price) };
+  });
+  const total = cartTotal();
+
+  // Guardar pedido en Supabase
+  let orderId = null;
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from('orders').insert([{
+        customer_name: name,
+        customer_address: addr,
+        items,
+        total,
+        status: 'pendiente'
+      }]).select('id').single();
+      if (!error && data) orderId = data.id;
+    } catch(e) { console.warn('No se pudo guardar pedido:', e); }
+  }
+
+  const siteUrl = window.location.origin + window.location.pathname;
   let msg = `🏥 *NUEVO PEDIDO - Tienda Médica*\n\n`;
   msg += `👤 *Cliente:* ${name}\n`;
   msg += `📍 *Dirección:* ${addr}\n`;
   msg += `💳 *Pago:* Contra entrega\n`;
   msg += `\n🛒 *Productos:*\n`;
-  cart.forEach(c => {
-    const p     = prods[c.prodIndex];
-    const price = c.type === 'set' ? p.price : p.piece;
-    const type  = c.type === 'set' ? 'Set completo' : 'Pieza individual';
-    msg += `• ${p.name} (${type}) Talla ${c.size} x${c.qty} = $${(parseFloat(price) * c.qty).toFixed(2)}\n`;
+  items.forEach(i => {
+    msg += `• ${i.name} (${i.type}) Talla ${i.size} x${i.qty} = $${(i.price * i.qty).toFixed(2)}\n`;
   });
-  msg += `\n💰 *TOTAL: $${cartTotal().toFixed(2)}*`;
+  msg += `\n💰 *TOTAL: $${total.toFixed(2)}*`;
+  if (orderId) {
+    msg += `\n\n🔗 *Ver pedido:* ${siteUrl}?order=${orderId}`;
+  }
 
   window.open(`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
+  toast('✅ Pedido guardado y enviado');
+}
+
+/* ════════════════════════════════════════════════
+   PEDIDOS (ADMIN)
+════════════════════════════════════════════════ */
+async function loadOrders() {
+  const el  = document.getElementById('orders-list');
+  const emp = document.getElementById('orders-empty');
+  const ld  = document.getElementById('orders-loading');
+  el.innerHTML = '';
+  emp.style.display  = 'none';
+  ld.style.display   = 'block';
+
+  if (!supabase) {
+    ld.style.display = 'none';
+    el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px">Sin conexión a Supabase</p>';
+    return;
+  }
+
+  const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+  ld.style.display = 'none';
+
+  if (error || !data || !data.length) { emp.style.display = 'block'; return; }
+
+  const statusColors = { pendiente: '#f59e0b', entregado: '#10b981', cancelado: '#ef4444' };
+
+  el.innerHTML = data.map(o => {
+    const date  = new Date(o.created_at).toLocaleString('es', { dateStyle:'short', timeStyle:'short' });
+    const items = (o.items || []).map(i => `<div style="font-size:0.78rem;color:var(--muted)">• ${i.name} (${i.type}) T:${i.size} x${i.qty}</div>`).join('');
+    const color = statusColors[o.status] || '#888';
+    return `
+    <div style="border:1px solid #dce8f5;border-radius:12px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <strong style="font-size:0.88rem;color:var(--navy)">${o.customer_name}</strong>
+        <span style="font-size:0.72rem;background:${color}22;color:${color};padding:2px 8px;border-radius:50px;font-weight:700">${o.status}</span>
+      </div>
+      <div style="font-size:0.78rem;color:var(--muted);margin-bottom:4px">📍 ${o.customer_address}</div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-bottom:6px">🕐 ${date}</div>
+      ${items}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <strong style="color:var(--sky)">$${parseFloat(o.total).toFixed(2)}</strong>
+        <select onchange="updateOrderStatus('${o.id}', this.value)" style="font-size:0.76rem;padding:4px 8px;border:1px solid #dce8f5;border-radius:8px;background:white;color:var(--navy)">
+          <option value="pendiente"  ${o.status==='pendiente'  ? 'selected':''}>⏳ Pendiente</option>
+          <option value="entregado"  ${o.status==='entregado'  ? 'selected':''}>✅ Entregado</option>
+          <option value="cancelado"  ${o.status==='cancelado'  ? 'selected':''}>❌ Cancelado</option>
+        </select>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function updateOrderStatus(id, status) {
+  if (!supabase) return;
+  await supabase.from('orders').update({ status }).eq('id', id);
+  toast('✅ Estado actualizado');
+}
+
+/* ════════════════════════════════════════════════
+   VER PEDIDO POR LINK (?order=ID)
+════════════════════════════════════════════════ */
+async function checkOrderLink() {
+  const params  = new URLSearchParams(window.location.search);
+  const orderId = params.get('order');
+  if (!orderId || !supabase) return;
+  const { data } = await supabase.from('orders').select('*').eq('id', orderId).single();
+  if (!data) return;
+  const date  = new Date(data.created_at).toLocaleString('es', { dateStyle:'medium', timeStyle:'short' });
+  const items = (data.items || []).map(i => `• ${i.name} (${i.type}) Talla ${i.size} x${i.qty} = $${(i.price*i.qty).toFixed(2)}`).join('\n');
+  alert(`📦 PEDIDO\n\n👤 ${data.customer_name}\n📍 ${data.customer_address}\n🕐 ${date}\n\n${items}\n\n💰 TOTAL: $${parseFloat(data.total).toFixed(2)}\nEstado: ${data.status}`);
 }
 
 /* ════════════════════════════════════════════════
@@ -1227,6 +1335,7 @@ function sendWA() {
 ════════════════════════════════════════════════ */
 initSupabase();
 loadProducts();
+setTimeout(checkOrderLink, 1500);
 </script>
 </body>
 </html>
